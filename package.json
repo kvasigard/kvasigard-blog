@@ -6,13 +6,16 @@
   "scripts": {
     "css:build": "npx tailwindcss -i ./css/main.css -o ./static/css/generated.css --minify",
     "css:watch": "npx tailwindcss -i ./css/main.css -o ./static/css/generated.css --watch",
-    "server": "zola serve"
+    "server": "zola serve",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "keywords": [],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "@tailwindcss/cli": "4",
-    "tailwindcss": "4"
+    "tailwindcss": "4",
+    "wrangler": "^4.68.1"
   }
 }
