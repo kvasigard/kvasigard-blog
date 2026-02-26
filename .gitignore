@@ -17,3 +17,10 @@ target/
 .fleet/*
 *.iws
 *.iml
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example
