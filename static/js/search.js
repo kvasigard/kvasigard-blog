@@ -71,15 +71,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const card = resultTemplate.content.firstElementChild.cloneNode(true);
       const titleLink = card.querySelector("[data-search-link]");
       const titleEl = card.querySelector("[data-search-title]");
-      const summaryEl = card.querySelector("[data-search-summary]");
+      const summaryEl = card.querySelector("[data-search_summary]"); // Note: dataset use or selector
+      // Fixed selector to match search.html which uses "data-search-summary" (with hyphen)
+      const actualSummaryEl = card.querySelector("[data-search-summary]");
 
       if (titleLink) titleLink.href = url;
       if (titleEl) titleEl.textContent = title || url;
 
-      if (summary && summaryEl) {
-        summaryEl.textContent = summary;
-      } else if (summaryEl) {
-        summaryEl.remove();
+      if (summary && actualSummaryEl) {
+        actualSummaryEl.textContent = summary;
+      } else if (actualSummaryEl) {
+        actualSummaryEl.remove();
       }
 
       results.appendChild(card);
@@ -211,8 +213,8 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const rawDocs =
         (window.searchIndex &&
-        window.searchIndex.documentStore &&
-        window.searchIndex.documentStore.docs) ||
+          window.searchIndex.documentStore &&
+          window.searchIndex.documentStore.docs) ||
         (window.searchIndex && window.searchIndex.docs) ||
         null;
       if (!rawDocs) throw new Error("Search index not available");
@@ -222,12 +224,20 @@ document.addEventListener("DOMContentLoaded", () => {
           id: doc.id,
           title: doc.title || "",
           body: doc.body || "",
+          description: doc.description || "",
         }))
-        .filter((doc) => doc.id && (doc.title || doc.body));
+        // Filter to only include items from the blog section and exclude section indices
+        .filter((doc) => {
+          const id = doc.id.toLowerCase();
+          const isBlog = id.includes("/blog/") || id.includes("/es/blog/");
+          const isSection = id.endsWith("/blog/") || id.endsWith("/es/blog/") || id.endsWith("/blog") || id.endsWith("/es/blog");
+          const hasContent = doc.id && (doc.title || doc.body || doc.description);
+          return isBlog && !isSection && hasContent;
+        });
 
       root.searchIndex = new MiniSearch({
-        fields: ["title", "body"],
-        storeFields: ["title", "body"],
+        fields: ["title", "body", "description"],
+        storeFields: ["title", "body", "description"],
       });
 
       root.searchIndex.addAll(documents);

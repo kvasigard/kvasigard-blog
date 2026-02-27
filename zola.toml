@@ -16,7 +16,15 @@ build_search_index = true
 # When set to "true", a feed is automatically generated
 generate_feeds = true
 
-# The taxonomies to use for the site
+[languages.en]
+build_search_index = true
+taxonomies = [
+    { name = "tags", paginate_by = 9, feed = true},
+    { name = "series", paginate_by = 9, feed = false},
+]
+
+[languages.es]
+build_search_index = true
 taxonomies = [
     { name = "tags", paginate_by = 9, feed = true},
     { name = "series", paginate_by = 9, feed = false},
@@ -61,8 +69,7 @@ quote = { text = "Do, or not do. There is no try.", author = "Yoda" }
 
 # The main navigation menu
 menu_pages = [
-    { title = "Imprint",              url = "/pages/imprint/" },
-    { title = "About",                url = "/pages/about/"   },
+    { title = "About me",             url = "/pages/about-me/" },
 ]
 
 # The pages that appear in the footer

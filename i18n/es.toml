@@ -1,0 +1,67 @@
+# Global settings
+settings_locale = "es"
+settings_date_locale = "es_ES"
+settings_date_format = "%d de %B de %Y"
+
+# Simple language resources
+empty_page_title = "Título vacío"
+empty_page_description = "Descripción vacía"
+read_more = "Leer más"
+previous_posts = "Entradas anteriores"
+next_posts = "Siguientes entradas"
+reading_time = "tiempo de lectura"
+aria_to_homepage = "Ir a la página principal"
+aria_menu = "Menú"
+aria_toggle_theme = "Alternar modo oscuro/claro"
+aria_search = "Buscar"
+menu_about = "Sobre mí"
+atom_feed_title = "Feed Atom"
+switch_light = "Cambiar al modo claro. Guarda la configuración para esta sesión."
+switch_dark = "Cambiar al modo oscuro. Guarda la configuración para esta sesión."
+with_tag = "con etiqueta"
+with_series = "en la serie"
+not_found_header = "La página que solicitaste no pudo ser encontrada."
+not_found_text = "¡Ups! Parece que esta página se perdió en el abismo de Internet. ¿Tal vez está de vacaciones? Por favor, comprueba la URL o contáctame."
+search_title = "Buscar"
+search_placeholder = "Buscar entradas..."
+search_input_label = "Buscar entradas"
+search_clear_label = "Limpiar búsqueda"
+search_pagination_label = "Páginas de resultados de búsqueda"
+search_page_label = "Página"
+series_nav_title = "Series"
+clipboard_copy = "Copiar al portapapeles"
+clipboard_copied = "Copiado al portapapeles"
+clipboard_error = "Error al copiar al portapapeles"
+search_no_results = "No se encontraron resultados"
+search_index_disabled = "El índice de búsqueda está desactivado. Configura build_search_index = true en zola.toml."
+search_error = "No se pudo cargar el índice de búsqueda."
+search_loading = "Cargando índice de búsqueda..."
+comments_consent_label = "Acepto cargar comentarios y almacenar datos en este dispositivo."
+comments_consent_no_js = "Los comentarios requieren JavaScript para cargar."
+audio_loading = "Cargando..."
+audio_no_element = "Tu navegador no soporta el elemento de audio."
+
+# Phrases with singular/plural variants
+search_results_one = "Encontrado {count} resultado"
+search_results_other = "Encontrados {count} resultados"
+
+# Nouns with singular and plural
+[words]
+one = "palabra"
+other = "palabras"
+
+[minutes]
+one = "minuto"
+other = "minutos"
+
+[posts]
+one = "entrada"
+other = "entradas"
+
+[tags]
+one = "etiqueta"
+other = "etiquetas"
+
+[series]
+one = "serie"
+other = "series"

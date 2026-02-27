@@ -1,7 +1,7 @@
 +++
-date = 2026-01-14
-title = "Search"
-description = "Search page and search results"
+date = 2026-02-27
+title = "Búsqueda"
+description = "Página de búsqueda y resultados"
 template = "search.html"
 authors = ["Kvasigard"]
 in_search_index = false
