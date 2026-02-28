@@ -26,7 +26,12 @@
             {% if config.extra.menu_pages %}
             {% for entry in config.extra.menu_pages %}
             <a class="px-3 py-2 rounded-md font-medium hover:bg-neutral-700 hover:text-neutral-50 transition ease-in-out duration-250 {% if entry.url == current_path %} bg-neutral-800 {% endif %}"
-              href="{{ get_url(path=entry.url) }}" title="{{ entry.title }}">
+              href="
+              {% if current_lang == 'es' %}
+                {{ get_url(path='/es' ~ entry.url) }}
+              {% else %}
+                {{ get_url(path=entry.url) }}
+              {% endif %}" title="{{ entry.title }}">
               {{ entry.title }}
             </a>
             {% endfor %}

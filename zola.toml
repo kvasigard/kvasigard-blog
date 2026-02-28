@@ -4,7 +4,7 @@ base_url = "https://kvasigard.com"
 # Whether to automatically compile all Sass files in the sass directory
 compile_sass = false
 
-# The default language ("de" also included in i18n directory)
+# The default language
 default_language = "en"
 
 # The site theme to use
@@ -69,13 +69,12 @@ quote = { text = "Do, or not do. There is no try.", author = "Yoda" }
 
 # The main navigation menu
 menu_pages = [
-    { title = "About me",             url = "/pages/about-me/" },
+    { title = "About me", url = "/pages/about-me/" },
 ]
 
 # The pages that appear in the footer
 footer_pages = [
-    { title = "Privacy Policy",       url = "/pages/privacy/" },
-    { title = "Terms",                url = "/pages/terms/"   },
+    { title = "",       url = "" },
 ]
 
 # Social links

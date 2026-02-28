@@ -1,5 +1,5 @@
 +++
-title = "Blog posts (ES)"
+title = "Blogs"
 template = "blog.html"
 page_template = "blog-post.html"
 paginate_by = 6
