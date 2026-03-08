@@ -1,0 +1,216 @@
+{
+  "main": {
+    "id": "8ce30a6cf78ade73",
+    "type": "split",
+    "children": [
+      {
+        "id": "deb8a00ea221ed04",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "103203d002dfb110",
+            "type": "leaf",
+            "state": {
+              "type": "image",
+              "state": {
+                "file": "2025-08-30-Adobe-PDF-Exploit/jsbeautyfy.png"
+              },
+              "icon": "lucide-image",
+              "title": "jsbeautyfy"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "2e1c6a1b12804f58",
+    "type": "split",
+    "children": [
+      {
+        "id": "6281d13e4bb98566",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "31f07d4452041589",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "398e1c849c92bd20",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "f4ce8505f68c9ed3",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "a1266b5f3bb84742",
+    "type": "split",
+    "children": [
+      {
+        "id": "3a1fcf80420e4ab7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "1708f84306be2cbb",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "anatomía-de-un-edr/index.es.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for index.es"
+            }
+          },
+          {
+            "id": "35159f4fa4400a3c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "anatomía-de-un-edr/index.es.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from index.es"
+            }
+          },
+          {
+            "id": "d32b397fcee94a4e",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "d9ee8d1a244052f8",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "3c906191613ead9c",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "anatomía-de-un-edr/index.es.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of index.es"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "103203d002dfb110",
+  "lastOpenFiles": [
+    "2025-10-22-Hardware-Breakpoints/index.md",
+    "2025-10-22-Hardware-Breakpoints/book.jpg",
+    "2025-10-22-Hardware-Breakpoints/banner.jpg",
+    "2025-08-30-Adobe-PDF-Exploit/jsbeautyfy.png",
+    "2025-08-30-Adobe-PDF-Exploit/banner.jpg",
+    "2025-08-30-Malware-Analysis-RTF-Document/index.md",
+    "2025-08-30-Malware-Analysis-RTF-Document/index.es.md",
+    "2025-08-30-Malware-Analysis-RTF-Document/banner.jpg",
+    "2025-08-30-Malware-Analysis-RTF-Document/virustotal-raw.png",
+    "2025-08-30-Adobe-PDF-Exploit/index.es.md",
+    "2025-08-30-Adobe-PDF-Exploit/index.md",
+    "2025-08-30-Malware-Analysis-RTF-Document/scdbg.png",
+    "2025-08-30-Malware-Analysis-RTF-Document/virustotal.png",
+    "2025-10-22-Hardware-Breakpoints/debug-registers.png",
+    "_index.es.md",
+    "_index.md",
+    "2025-08-30-Adobe-PDF-Exploit/img",
+    "2025-08-30-Malware-Analysis-RTF-Document/peb.png",
+    "2025-08-30-Malware-Analysis-RTF-Document/img",
+    "genesis/index.es.md",
+    "2025-08-30-RTF-Exploit.md",
+    "2025-08-30-Adobe-PDF-Exploit.md",
+    "2025-10-22-Hardware-Breakpoints.md",
+    "2025-10-22-Hardware-Breakpoints",
+    "2025-08-30-Malware-Analysis-RTF-Document",
+    "2025-08-30-Adobe-PDF-Exploit",
+    "genesis/index.md",
+    "anatomía-de-un-edr/index.es.md",
+    "anatomía-de-un-edr"
+  ]
+}
