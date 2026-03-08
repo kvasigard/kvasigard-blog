@@ -11,10 +11,12 @@
             "id": "6c8a62b902f09f97",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
-              "icon": "lucide-file",
-              "title": "New tab"
+              "type": "image",
+              "state": {
+                "file": "2025-08-30-Malware-Analysis-RTF-Document/virustotal-raw.png"
+              },
+              "icon": "lucide-image",
+              "title": "virustotal-raw"
             }
           }
         ]
@@ -181,10 +183,10 @@
   },
   "active": "6c8a62b902f09f97",
   "lastOpenFiles": [
+    "2025-08-30-Malware-Analysis-RTF-Document/index.es.md",
+    "2025-08-30-Malware-Analysis-RTF-Document/index.md",
     "2025-08-30-Adobe-PDF-Exploit/index.md",
     "2025-08-30-Adobe-PDF-Exploit/index.es.md",
-    "2025-08-30-Malware-Analysis-RTF-Document/index.md",
-    "2025-08-30-Malware-Analysis-RTF-Document/index.es.md",
     "2025-08-30-Malware-Analysis-RTF-Document/banner.jpg",
     "2025-08-30-Adobe-PDF-Exploit/banner.jpg",
     "_index.es.md",
