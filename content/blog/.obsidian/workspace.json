@@ -4,19 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "deb8a00ea221ed04",
+        "id": "71717d570bf12dec",
         "type": "tabs",
         "children": [
           {
-            "id": "103203d002dfb110",
+            "id": "6c8a62b902f09f97",
             "type": "leaf",
             "state": {
-              "type": "image",
-              "state": {
-                "file": "2025-08-30-Adobe-PDF-Exploit/jsbeautyfy.png"
-              },
-              "icon": "lucide-image",
-              "title": "jsbeautyfy"
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
             }
           }
         ]
@@ -181,24 +179,24 @@
       "bases:Create new base": false
     }
   },
-  "active": "103203d002dfb110",
+  "active": "6c8a62b902f09f97",
   "lastOpenFiles": [
-    "2025-10-22-Hardware-Breakpoints/index.md",
-    "2025-10-22-Hardware-Breakpoints/book.jpg",
-    "2025-10-22-Hardware-Breakpoints/banner.jpg",
-    "2025-08-30-Adobe-PDF-Exploit/jsbeautyfy.png",
-    "2025-08-30-Adobe-PDF-Exploit/banner.jpg",
+    "2025-08-30-Adobe-PDF-Exploit/index.md",
+    "2025-08-30-Adobe-PDF-Exploit/index.es.md",
     "2025-08-30-Malware-Analysis-RTF-Document/index.md",
     "2025-08-30-Malware-Analysis-RTF-Document/index.es.md",
     "2025-08-30-Malware-Analysis-RTF-Document/banner.jpg",
+    "2025-08-30-Adobe-PDF-Exploit/banner.jpg",
+    "_index.es.md",
+    "_index.md",
+    "2025-08-30-Adobe-PDF-Exploit/jsbeautyfy.png",
+    "2025-10-22-Hardware-Breakpoints/index.md",
+    "2025-10-22-Hardware-Breakpoints/book.jpg",
+    "2025-10-22-Hardware-Breakpoints/banner.jpg",
     "2025-08-30-Malware-Analysis-RTF-Document/virustotal-raw.png",
-    "2025-08-30-Adobe-PDF-Exploit/index.es.md",
-    "2025-08-30-Adobe-PDF-Exploit/index.md",
     "2025-08-30-Malware-Analysis-RTF-Document/scdbg.png",
     "2025-08-30-Malware-Analysis-RTF-Document/virustotal.png",
     "2025-10-22-Hardware-Breakpoints/debug-registers.png",
-    "_index.es.md",
-    "_index.md",
     "2025-08-30-Adobe-PDF-Exploit/img",
     "2025-08-30-Malware-Analysis-RTF-Document/peb.png",
     "2025-08-30-Malware-Analysis-RTF-Document/img",
