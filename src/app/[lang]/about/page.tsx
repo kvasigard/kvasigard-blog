@@ -7,6 +7,12 @@ interface AboutPageProps {
     }>;
 }
 
+
+export function generateStaticParams() {
+    return [{ lang: 'es' }, { lang: 'en' }];
+}
+
+
 export default async function AboutPage({ params }: AboutPageProps) {
     const resolvedParams = await params;
     const dictionary = getDictionary(resolvedParams.lang as Locale);
@@ -22,18 +28,18 @@ export default async function AboutPage({ params }: AboutPageProps) {
                     {dictionary.aboutDesc}
                 </p>
             </header>
-            
+
             <div className="relative group">
                 {/* Decoración lateral de terminal */}
                 <div className="absolute -left-4 top-0 bottom-0 w-[1px] bg-indigo-500/20 dark:bg-amber-500/20 hidden md:block" />
-                
+
                 <div className="space-y-8 pl-0 md:pl-8">
-                    <section 
+                    <section
                         className="p-8 border border-zinc-200 dark:border-white/10 rounded-xl bg-zinc-50/50 dark:bg-white/[0.02] backdrop-blur-md relative overflow-hidden shadow-sm"
                     >
                         {/* Indicador de carga de perfil */}
                         <div className="absolute top-0 left-0 w-full h-[1px] bg-indigo-500/10 dark:bg-amber-500/10" />
-                        
+
                         <div className="prose prose-zinc dark:prose-invert max-w-none text-base leading-relaxed text-zinc-700 dark:text-[#94a3b8] font-sans">
                             {dictionary.aboutBio}
                         </div>
@@ -43,13 +49,13 @@ export default async function AboutPage({ params }: AboutPageProps) {
                         <h2 className="text-[10px] font-mono font-bold text-indigo-600 dark:text-amber-500 tracking-[0.3em] uppercase opacity-80">
                             {dictionary.contactTitle}
                         </h2>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {[
                                 { name: 'GitHub', url: 'https://github.com/noelsandival', label: '/@noelsandival' },
                                 { name: 'Twitter/X', url: 'https://x.com/noelsandival', label: '/@noelsandival' }
                             ].map((channel) => (
-                                <Link 
+                                <Link
                                     key={channel.name}
                                     href={channel.url}
                                     target="_blank"

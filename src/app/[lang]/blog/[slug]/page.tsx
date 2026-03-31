@@ -12,6 +12,12 @@ import TableOfContents from '@/components/blog/TableOfContents';
 import { codeToHtml } from 'shiki';
 import { visit } from 'unist-util-visit';
 
+
+export function generateStaticParams() {
+    return [{ lang: 'es' }, { lang: 'en' }];
+}
+
+
 // Custom plugin to handle shiki highlighting in the unified pipeline
 function rehypeShiki(dictionary: any) {
     return async (tree: any) => {
@@ -80,17 +86,17 @@ function rehypeCallouts() {
                 if (p && p.children?.[0]?.type === 'text') {
                     const firstChild = p.children[0];
                     const match = firstChild.value.match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)/i);
-                    
+
                     if (match) {
                         const type = match[1].toUpperCase();
                         const remainingText = match[2];
-                        
+
                         // Update the text node to remove the marker
                         firstChild.value = remainingText;
-                        
+
                         // Add classes for styling
                         node.properties.className = ['callout-box', `callout-${type.toLowerCase()}`];
-                        
+
                         // Prepend a title/icon header if desired
                         node.children.unshift({
                             type: 'element',

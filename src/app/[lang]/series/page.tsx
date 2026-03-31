@@ -2,6 +2,12 @@ import { getAllPosts } from '@/lib/mdx';
 import { getDictionary, Locale } from '@/lib/i18n';
 import Link from 'next/link';
 
+
+export function generateStaticParams() {
+    return [{ lang: 'es' }, { lang: 'en' }];
+}
+
+
 export default async function SagasPage({ params }: { params: Promise<{ lang: string }> }) {
     const resolvedParams = await params;
     const posts = await getAllPosts(resolvedParams.lang);
