@@ -8,6 +8,10 @@ interface BlogPageProps {
     }>;
 }
 
+export function generateStaticParams() {
+    return [{ lang: 'es' }, { lang: 'en' }];
+}
+
 export default async function BlogPage({ params }: BlogPageProps) {
     const resolvedParams = await params;
     const posts = await getAllPosts(resolvedParams.lang);
@@ -23,10 +27,10 @@ export default async function BlogPage({ params }: BlogPageProps) {
                     # {posts.length} {dictionary.modulesLoaded}
                 </p>
             </header>
-            <PostList 
-                posts={posts} 
-                lang={resolvedParams.lang} 
-                placeholder={dictionary.searchPlaceholder} 
+            <PostList
+                posts={posts}
+                lang={resolvedParams.lang}
+                placeholder={dictionary.searchPlaceholder}
                 dateLabel={dictionary.date}
                 sagaLabel={dictionary.sagaPrefix}
             />
