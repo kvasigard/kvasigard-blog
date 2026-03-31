@@ -5,6 +5,8 @@ import Header from '@/components/layout/Header';
 import { getDictionary, Locale } from '@/lib/i18n';
 import '../globals.css';
 
+export const dynamicParams = false;
+
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' });
 

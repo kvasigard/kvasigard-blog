@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { getPostBySlug } from '@/lib/mdx';
+import { getPostBySlug, getAllPosts } from '@/lib/mdx';
 import { getDictionary, Locale } from '@/lib/i18n';
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
@@ -13,8 +13,21 @@ import { codeToHtml } from 'shiki';
 import { visit } from 'unist-util-visit';
 
 
-export function generateStaticParams() {
-    return [{ lang: 'es' }, { lang: 'en' }];
+export async function generateStaticParams() {
+    const languages = ['es', 'en'];
+    const params = [];
+
+    for (const lang of languages) {
+        const posts = await getAllPosts(lang);
+        for (const post of posts) {
+            params.push({
+                lang: lang,
+                slug: post.slug,
+            });
+        }
+    }
+
+    return params;
 }
 
 
