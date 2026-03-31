@@ -1,26 +1,223 @@
 @import "tailwindcss";
 
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-ice-steel: #05070a;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --accent: #6366f1;
+  /* Indigo/Lilac Blue for light mode */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #05070a;
+  --foreground: #ededed;
+  --accent: #f59e0b;
+  /* Amber/Complementary for dark mode */
 }
 
 body {
-  background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--background);
+  /* Cyber-Norse Grid Pattern */
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(99, 102, 241, 0.05) 1px, transparent 0);
+  background-size: 40px 40px;
+}
+
+.dark body {
+  background-image:
+    radial-gradient(circle at 2px 2px, rgba(245, 158, 11, 0.05) 1px, transparent 0);
+}
+
+/* =========================================
+   MARKDOWN INLINE CODE (`code`)
+   ========================================= */
+code::before,
+code::after {
+  content: "" !important;
+}
+
+/* Renderizado limpio: sin caja, solo tipografía resaltada */
+.prose :not(pre)>code {
+  color: #000000;
+  /* Negro puro en modo claro */
+  padding: 0;
+  background-color: transparent !important;
+  border: none !important;
+  font-size: 0.95em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  /* Peso igual al bolding */
+  word-break: break-word;
+}
+
+.dark .prose :not(pre)>code {
+  color: #ffffff;
+  /* Blanco puro en modo oscuro */
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* =========================================
+   MARKDOWN BLOCKQUOTES (Notas con `>`)
+   ========================================= */
+.prose blockquote {
+  margin: 2.5rem 0 !important;
+  padding: 1.25rem 1.75rem !important;
+  border-left: 4px solid #6366f1 !important;
+  border-radius: 0 0.75rem 0.75rem 0 !important;
+  background: linear-gradient(to right, rgba(99, 102, 241, 0.05), transparent) !important;
+  font-style: italic !important;
+  color: var(--foreground) !important;
+  quotes: none !important;
+  position: relative;
+  box-shadow: 0 4px 20px -10px rgba(99, 102, 241, 0.1);
+}
+
+.dark .prose blockquote {
+  border-left-color: #f59e0b !important;
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.08), transparent) !important;
+  box-shadow: 0 4px 20px -10px rgba(245, 158, 11, 0.1);
+}
+
+.prose blockquote p {
+  line-height: 1.7 !important;
+  opacity: 0.9;
+}
+
+/* Neon Glow utilities */
+.neon-glow {
+  text-shadow: 0 0 10px rgba(99, 102, 241, 0.5), 0 0 20px rgba(99, 102, 241, 0.3);
+}
+
+.dark .neon-glow {
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.5), 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+.neon-border {
+  border-color: rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.05);
+}
+
+.dark .neon-border {
+  border-color: rgba(245, 158, 11, 0.2);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.05);
+}
+
+/* Advanced Callout Boxes */
+.callout-box {
+  margin: 3rem 0;
+  padding: 1.75rem 2rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(99, 102, 241, 0.1);
+  border-left: 6px solid #6366f1;
+  background: linear-gradient(to right, rgba(99, 102, 241, 0.05), transparent);
+  background-color: rgba(99, 102, 241, 0.02);
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 10px 30px -15px rgba(0, 0, 0, 0.2);
+}
+
+.dark .callout-box {
+  border-color: rgba(245, 158, 11, 0.1);
+  border-left-color: #f59e0b;
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.02));
+  background-color: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 15px 40px -20px rgba(0, 0, 0, 0.5);
+}
+
+.callout-box p {
+  margin: 0 !important;
+  font-size: 0.95rem;
+  line-height: 1.8 !important;
+  color: var(--foreground);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.callout-header {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-weight: 900;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #6366f1;
+  opacity: 1 !important;
+}
+
+.dark .callout-header {
+  color: #f59e0b;
+  text-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+}
+
+.callout-header::before {
+  content: "/////";
+  font-size: 0.6rem;
+  letter-spacing: -0.1em;
+  opacity: 0.4;
+}
+
+/* Global Link Styling for Articles */
+article a {
+  color: #6366f1 !important;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-weight: 600;
+}
+
+.dark article a {
+  color: #f59e0b !important;
+  text-decoration-color: rgba(245, 158, 11, 0.3);
+}
+
+article a:hover {
+  opacity: 1;
+  text-decoration-thickness: 2px;
+  text-decoration-color: currentColor;
+  transform: translateY(-1px);
+}
+
+/* Selection Fix */
+::selection {
+  background-color: rgba(99, 102, 241, 0.3);
+  color: inherit;
+}
+
+.dark ::selection {
+  background-color: rgba(245, 158, 11, 0.4) !important;
+  color: #000 !important;
+}
+
+/* =========================================
+   SHIKI CODE BLOCKS
+   ========================================= */
+/* 1. Al contenedor principal le quitamos el fondo para que luzca tu bg-zinc-900/50 con backdrop-blur */
+.dark .shiki {
+  background-color: transparent !important;
+}
+
+/* 2. A los "tokens" (las palabras del código) SOLO les cambiamos el color de la letra, nada de fondos */
+.dark .shiki span {
+  color: var(--shiki-dark) !important;
+  background-color: transparent !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
 }

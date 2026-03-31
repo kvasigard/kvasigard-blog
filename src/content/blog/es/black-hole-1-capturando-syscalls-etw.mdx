@@ -1,0 +1,300 @@
+---
+title: "Black Hole I: Capturando Syscalls con ETW y Stack Tracing"
+date: "2026-03-29"
+tags: ["Rust", "Detection Engineering", "EDR", "Windows-Internals", "ETW"]
+series: "Black Hole Series"
+---
+
+En este blog de hoy vamos a ver como se podemos conseguir los "call stacks" de los programas para en un futuro poder analizarlos y determinar si ese programa puede estar utilizando técnicas de evasion como "_Direct Syscalls_" o "_Indirect Syscalls_". Para conseguir esto crearemos un sensor que recoge esa telemetría utilizando ETW. 
+
+# Conceptos Básicos sobre ETW
+
+Para entender cómo vamos a capturar esta telemetría, primero hay que desglosar qué es **ETW (Event Tracing for Windows)**. En esencia, es una herramienta que nos da el propio sistema operativo y que nos sirve como un "logger" de alto rendimiento a nivel de kernel. Esta infraestructura nos permite registrar nuestras propias aplicaciones para generar eventos o, lo que es más interesante para nosotros, recibir eventos de otros generadores que ya están funcionando en Windows.
+
+## Componentes
+Para no liarnos, esto se ve mucho más claro si dividimos el modelo de ETW en sus tres piezas clave:
+
+- **Proveedor:** Puede ser una aplicación o un driver. Es el que tiene la capacidad de generar eventos. Para que no haya confusiones con los nombres, cada proveedor tiene su propio [GUID](https://en.wikipedia.org/wiki/Universally_unique_identifier) único que lo identifica.
+    
+- **Controlador:** Es el encargado de abrir y cerrar las sesiones de eventos, decidir cuánto espacio van a ocupar los buffers y activar a los proveedores para que empiecen a mandar eventos a las sesiones que se les especifica. 
+    
+- **Consumidor:** Es la aplicación que se conecta a una sesión para recibir esos eventos, ya sea leyéndolos en tiempo real mientras ocurren o sacándolos de un archivo de log (.etl) que se grabó anteriormente.
+    
+> Para ver los distintos proveedores y su GUID puedes usar el comando `logman query` y para ver aquellos que están activos `logman query -ets`. 
+
+## Tipos de Proveedores
+Ahora bien, no todos los proveedores escupen los datos de la misma forma. Dependiendo de cómo se hayan programado o de la época de la que vengan, nos encontraremos con distintos tipos:
+
+- **MOF (Classic):** Son los mas antiguos y están muy ligados a WMI. Utilizan clases de [_Managed Object Format_](https://learn.microsoft.com/en-us/windows/win32/wmisdk/managed-object-format--mof-) para definir los datos. Hoy en día se consideran un poco legados, pero se pueden seguir utilizando. 
+    
+- **Basados en Manifiesto:** Es el estándar que domina Windows actualmente. El proveedor usa un archivo XML (el manifiesto) donde se detalla absolutamente todo: qué eventos puede lanzar, qué campos tiene cada uno y qué significan. Puedes ver mas detalles en la [documentación oficial](https://learn.microsoft.com/en-us/windows/win32/wes/writing-an-instrumentation-manifest). 
+    
+- **WPP ([Windows Software Trace Processor](https://learn.microsoft.com/en-us/windows-hardware/drivers/devtest/wpp-software-tracing)):** Estos son los favoritos de los desarrolladores de _drivers_. Son súper eficientes porque, en lugar de enviar textos largos, envían mensajes binarios comprimidos. El problema es que, para leerlos, necesitas unos archivos específicos llamados TMF que se generan al compilar el código.
+    
+- **[TraceLogging](https://learn.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-portal):** Es la versión moderna y "sin fricción". A diferencia de los de manifiesto, no necesitan un archivo XML externo; la descripción de los datos va metida dentro del propio evento. Es mucho más sencillo de implementar para los desarrolladores.
+
+> **Cómo listar proveedores**
+> 
+> Para saber qué eventos puede emitir un proveedor necesitamos su "diccionario" o manifiesto. Muchos están registrados en el repositorio de instrumentación del sistema, y con herramientas como **PerfView** o incluso el propio [wevtutil](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/wevtutil) de Windows, puedes extraerlos para saber exactamente qué eventos emite y qué campos tiene cada uno.
+> 
+> Por ejemplo, prueba a ejecutar el siguiente comando para ver el manifiesto del proveedor de servicios de red (en formato XML):
+> 
+> `wevtutil gp Microsoft-Windows-WinINet /ge:true /gm:true`
+> 
+> Esto te mostrará todos los eventos que puede generar, sus IDs y la estructura de los datos que verás en el consumidor. Para verlos de forma mas amigable con UI puede usar [ETWExplorer](https://github.com/zodiacon/EtwExplorer) o [ETWStudio](https://github.com/zodiacon/ETWStudio/tree/a4f3684fdf42183233cd8f4384b5ea55358ebc77) (todavía en desarrollo)
+
+
+## Anatomía de un Evento
+
+Cuando abres un manifiesto XML con `wevtutil`, verás un esquema estructurado que define cómo se clasifica, se protege y se procesa la información. Esto es importante para aplicar filtros y saber qué eventos en concreto nos interesan. Puedes fijarte en este [manifiesto de Microsoft-Windows-Threat-Intelligence](https://raw.githubusercontent.com/nasbench/EVTX-ETW-Resources/refs/heads/main/ETWProvidersManifests/Windows11/24H2/W11_24H2_Pro_2024102_26100.1742/WEPExplorer/Microsoft-Windows-Threat-Intelligence.xml) ya que es el que utilizaremos para el ejemplo. 
+
+>  **Sobre Microsoft-Windows-Threat-Intelligence**
+>  
+>  Hay que tener en cuenta que este proveedor tiene una pega: está protegido y no es tan trivial de consumir si no tienes un driver firmado por Microsoft o ciertos privilegios especiales llamados [PPL](https://trainsec.net/library/windows-internals/protected-processes-ppl-keeping-windows-heart-safe/). Veremos como podemos saltarnos esa restricción para hacer nuestras pruebas mas adelante. 
+
+### Canales 
+Es el **destino lógico** del evento. Su función principal es la segregación por audiencia y propósito.
+
+- **Admin:** Eventos críticos que requieren acción inmediata del administrador.
+- **Operational:** Sucesos cotidianos del sistema que confirman el funcionamiento correcto. 
+- **Analytic/Debug:** Eventos de alto volumen diseñados para desarrolladores.
+
+En el ejemplo de Microsoft-Windows-Threat-Intelligence solo existe el canal de analítica:
+``` xml
+<Channels>
+	<Channel>
+		<Message></Message>
+		<Path>Microsoft-Windows-Threat-Intelligence/Analytic</Path>
+		<Index>0</Index>
+		<Id>16</Id>
+		<Imported>false</Imported>
+	</Channel>
+</Channels>
+```
+
+### Niveles de Severidad
+Indican la urgencia o el grado de detalle del evento. Se definen mediante una escala numérica estándar:
+
+- **Critical (1) / Error (2) / Warning (3):** Fallos o estados anómalos. 
+
+- **Informational (4) / Verbose (5):** Actividad normal del sistema.
+
+En el ejemplo de Microsoft-Windows-Threat-Intelligence solo existen eventos informacionales:
+``` xml
+<Levels>
+	<Level>
+		<Message>Information</Message>
+		<Name>win:Informational</Name>
+		<Value>4</Value>
+	</Level>
+</Levels>
+```
+
+### Tasks y Opcodes
+
+La **Task** sirve para agrupar eventos, mientras que el **Opcode** identifica la operación específica (ej. "Start" o "Stop"). En el caso de Microsoft-Windows-Threat-Intelligence no hay Opcodes definidos pero si tareas:
+
+``` xml
+<Tasks>
+...
+	<Task>
+		<Message></Message>
+		<Name>KERNEL_THREATINT_PROCESS_SYSCALL_USAGE</Name>
+		<Value>13</Value>
+	</Task>
+	<Task>
+		<Message></Message>
+		<Name>KERNEL_THREATINT_PROCESS_IMPERSONATION_DOWN</Name>
+		<Value>14</Value>
+	</Task>
+</Tasks>
+<Opcodes>
+</Opcodes>
+```
+
+> **Sobre KERNEL_THREATINT_PROCESS_SYSCALL_USAGE**
+> 
+> La tarea KERNEL_THREATINT_PROCESS_SYSCALL_USAGE tiene un nombre poco descriptivo y no es exactamente lo que estamos buscando para nuestro caso de uso. Tal y como se puede leer en este [blog de Windows Internals](https://windows-internals.com/an-end-to-kaslr-bypasses/), este evento ETW se genera para indicar que un proceso que no es administrador ha realizado una llamada a  **NtQuerySystemInformation**  o  **NtSystemDebugControl** con una clase de información que podría indicar alguna actividad inusual. En el blog podéis encontrar la lista de las clases monitorizadas. 
+> 
+> Estas clases de información se incluyen por diferentes razones: algunas son conocidas por [filtrar direcciones del kernel](http://www.alex-ionescu.com/?p=82), algunas pueden usarse para la [detección de máquinas virtuales](https://evasions.checkpoint.com/techniques/firmware-tables.html), otras se usan en [persistencia de hardware](https://persistence-info.github.io/Data/wpbbin.html).  
+
+### Keywords 
+
+Es el filtro más importante. Es una **máscara de bits** (uint64) que clasifica los eventos por categorías técnicas. Al activar el proveedor, necesita saber qué bits "encender" para que ETW solo nos envíe lo que queremos.
+
+``` xml
+</Keywords>
+	...
+	<Keyword>
+		<Message></Message>
+		<Name>KERNEL_THREATINT_KEYWORD_QUEUEUSERAPC_AT_DPC</Name>
+		<Value>2199023255552</Value>
+	</Keyword>
+	<Keyword>
+		<Message></Message>
+		<Name>KERNEL_THREATINT_KEYWORD_PROCESS_IMPERSONATION_DOWN</Name>
+		<Value>4398046511104</Value>
+	</Keyword>
+</Keywords>
+```
+
+> **Keyword vs Task**
+> 
+> La función de las **Keywords** es clasificar eventos por categorías técnicas (ej. Memoria, Red) para evitar que ETW sature el sistema con datos que no necesitamos procesar. Por el contrario, la **Task** identifica el propósito funcional o el componente específico dentro de esa categoría (ej. una lectura de memoria frente a una escritura). En la práctica, se debe usar la **Keyword** al configurar la sesión para limitar qué eventos "despiertan" al proveedor, mientras que utilizaremos la **Task** una vez capturado el evento para identificar con precisión qué técnica o comportamiento sospechoso se ha ejecutado.
+
+### Event Templates
+
+Los **Event Templates** definen la estructura exacta de la información que el evento transporta. Mientras que la Task o la Keyword nos dicen qué tipo de evento es, la Template nos entrega los datos reales (direcciones de memoria, nombres de archivos, PIDs, etc.). Es el esquema que permite a las herramientas "parsear" los bytes binarios del evento y convertirlos en datos legibles. Por ejemplo:
+
+``` xml
+
+<Event>
+	<Id>2</Id>
+	<Version>2</Version>
+	<Channel>Microsoft-Windows-Threat-Intelligence/Analytic</Channel>
+	<Level>Information</Level>
+	<Task>KERNEL_THREATINT_TASK_PROTECTVM</Task>
+	<Keyword>KERNEL_THREATINT_KEYWORD_PROTECTVM_REMOTE</Keyword>
+    <Template><![CDATA[
+	<template xmlns="http://schemas.microsoft.com/win/2004/08/events">
+	  <data name="CallingProcessId" inType="win:UInt32" outType="win:PID"/>
+	  ...
+	  <data name="VaVadRegionType" inType="win:UInt32" outType="xs:unsignedInt"/>
+	  <data name="VaVadRegionSize" inType="win:Pointer" outType="win:HexInt64"/>
+	  <data name="VaVadCommitSize" inType="win:Pointer" outType="win:HexInt64"/>
+	  <data name="VaVadMmfName" inType="win:UnicodeString" outType="xs:string"/>
+	</template>
+	]]></Template>
+</Event>
+```
+
+Como se puede apreciar, cada campo de la plantilla tiene un `inType` que define cómo debe interpretarse el dato (un puntero, un entero de 32 bits, una cadena Unicode) y un `outType` que define cómo debe renderizarse o mostrarse esa información al usuario final (por ejemplo, transformando un entero de 32 bits en un **PID** o un puntero en una dirección hexadecimal de 64 bits). 
+
+# Configurando una sesión ETW
+_Explicamos por que hemos escogido NT Kernel Logger y es basicamente por tener mas informacion sobre la que trastear aunque nos inunde a peticiones. Luego pasamos a explicar como funciona mas en detalle este logger con referencias a la documentacion y como empezar a recibir eventos. Durante la explicacion podemos explicar lo mismo para el proveedor de TI._
+## Activación
+
+Para que un proveedor empiece a generar eventos, debe estar vinculado a una sesión de ETW. Este proceso se conoce como **activación** y es gestionado por una controlador ETW a través de la API [EnableTraceEx](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-enabletraceex). 
+
+Al activar el proveedor, "abrimos el grifo" y definimos qué "agua" (eventos) queremos que pase mediante nivel, keywords y la estructura [`EVENT_FILTER_DESCRIPTOR`](https://learn.microsoft.com/en-us/windows/win32/api/evntprov/ns-evntprov-event_filter_descriptor). 
+
+> **Activación a proveedores MOF y WPP**
+> 
+> Los proveedores mas antiguos que funcionan como MOF y WPP solo pueden ser tener asociada una sesión activa al mismo tiempo. 
+## Consumo de Eventos
+
+
+### Configurando la sesión
+Una vez "abierto el grifo" y nuestro proveedor objetivo ya esta activado, la aplicación consumidora debe abre la sesión que le hemos pasado al proveedor con [`OpenTrace`](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-opentracew). Esta función recibe una estructura llamada [`EVENT_TRACE_LOGFILE`](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_logfilew) y va a ser la estructura que defina todos los parámetros de nuestra sesión. En esta estructura se definen cosas tan importantes como las siguientes:
+
+#### Tipos de sesión
+Podemos configurar nuestra sesión para que el proveedor envíe los eventos directamente a nuestra app (**Real-time**) o que lo haga a través de un archivo en disco (**Logfile**). Esto se determina mediante los miembros `LoggerName` (para tiempo real) o `LogFileName` (para archivos `.etl`).
+
+#### Tamaño de los buffers
+A través de campos como `BufferSize`, `MinimumBuffers` y `MaximumBuffers`, controlamos cuánta memoria se reserva para la sesión. Si nuestra aplicación no procesa los eventos lo suficientemente rápido y los buffers se llenan, empezaremos a perder telemetría.
+
+#### Función de procesado
+Es el componente más importante: el [**EventRecordCallback**](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nc-evntrace-pevent_record_callback). Es un puntero a la función de nuestra aplicación que ETW llamará cada vez que un evento esté listo para ser consumido. Esta función recibe la estructura [`EVENT_RECORD`](https://learn.microsoft.com/en-us/windows/win32/api/evntcons/ns-evntcons-event_record), que contiene la Task, Keyword y los datos que vimos antes en el Template.
+
+>**EventRecordCallback vs EventCallback**
+>
+>Aunque ambas son funciones de "callback" que procesan la telemetría, pertenecen a épocas diferentes de la arquitectura ETW. La elección de una u otra cambia por completo la estructura de datos que recibe tu aplicación:
+>
+>- **EventCallback (Heredado/Legacy):** Es el formato antiguo (prioritario en Windows 2000/XP). Utiliza la estructura `EVENT_TRACE`, la cual es bastante limitada y difícil de parsear, ya que no estaba diseñada para el modelo basado en manifiestos. 
+>
+>- **EventRecordCallback (Moderno):** Es el estándar actual introducido en Windows Vista. Utiliza la estructura `EVENT_RECORD`, que es mucho más rica en información. 
+>
+>Al configurar la estructura `EVENT_TRACE_LOGFILE`, debemos asignar nuestra función al miembro `EventRecordCallback` y asegurarnos de incluir el flag `PROCESS_TRACE_MODE_EVENT_RECORD` en el campo `ProcessTraceMode`. 
+
+Todos los detalles los podéis encontrar en la documentación ya que hay varias estructuras complejas. 
+
+### Consumiendo eventos
+
+Una vez configurada la sesión a nuestro gusto y necesidades, tenemos que empezar a "bombear" los eventos para que lleguen a la función que definimos en `EventRecordCallback` anteriormente. Esto lo conseguimos a través de la función [ProcessTrace](https://www.google.com/search?q=%5Bhttps://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-processtrace%5D\(https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-processtrace\)&authuser=2).
+
+Es muy importante entender que ProcessTrace es una función **síncrona**. Esto significa que, al llamarla, el hilo principal de tu aplicación se detiene y entra en un bucle que solo termina cuando la sesión se cierra o el archivo .etl se procesa por completo. 
+
+Por cada evento que el kernel libera, el sistema "salta" al callback que hemos especificado, lo ejecuta y vuelve a `ProcessTrace` para esperar el siguiente.
+
+> **Sobre el callback**
+> 
+> Es deseable que el callback de `ProcessTrace` no haga análisis pesado ya que paraliza el consumo de nuevos eventos. Normalmente querremos que esta función copie los datos del `EVENT_RECORD` a una cola en memoria (como un `ConcurrentQueue`) y retorne inmediatamente. De este modo, un hilo separado se encarga de procesar los eventos sin frenar el flujo de entrada de ETW.
+
+Para detener el bombeo de eventos en una sesión de tiempo real, otra parte del programa debe llamar a [`CloseTrace`](https://www.google.com/search?q=%5Bhttps://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-closetrace%5D\(https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-closetrace\)&authuser=2). Solo en ese momento `ProcessTrace` liberará el hilo y la aplicación podrá continuar con su ejecución normal o cerrarse de forma limpia.
+
+## Decodificando eventos
+
+Cuando `ProcessTrace` identifica un nuevo evento, dispara el callback y nos entrega una estructura `EVENT_RECORD`. Sin embargo, esta contiene el payload en "crudo" (una secuencia de bytes sin etiquetas). Para que nuestra aplicación pueda entender qué significan esos bytes, debemos decodificarlos utilizando la librería [**TDH (Event Trace Decode Helper)**](https://learn.microsoft.com/en-us/windows/win32/etw/retrieving-event-data-using-tdh).
+
+El proceso de decodificado varía según el tipo de proveedor, pero para los basados en manifiesto (como _Threat-Intelligence_), el sistema sigue este flujo:
+
+1. **Localización del Binario:** El sistema consulta la clave de registro `HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Publishers` usando el GUID del proveedor. Allí encuentra la ruta del archivo (EXE o DLL) que actúa como "servidor de recursos".
+    
+2. **Extracción del Manifiesto Compilado:** `TDH.dll` accede a la sección `.rsrc` de ese binario. Aquí es donde reside el manifiesto ya compilado (en formato binario tras haber pasado por el _Message Compiler_). Es esencialmente la base de datos que dice: _"el evento X tiene estos 4 campos y son de este tipo"_.
+	
+3. **Interpretación de Datos:** Con esta "guía" en mano, usamos la API [`TdhGetEventInformation`](https://learn.microsoft.com/en-us/windows/win32/api/tdh/nf-tdh-tdhgeteventinformation) para mapear los bytes del payload con los nombres y tipos de datos definidos originalmente.
+
+Al invocar `TdhGetEventInformation`, recibimos una estructura [`TRACE_EVENT_INFO`](https://learn.microsoft.com/en-us/windows/win32/api/tdh/ns-tdh-trace_event_info). Esta es la estructura que nos permite iterar por cada propiedad del evento. Para cada campo (como un _ProcessId_ o una dirección de memoria), la estructura nos proporciona:
+
+- **El nombre del campo** (ej. "TargetProcessId").
+	
+- **El desplazamiento (offset)** exacto donde empiezan sus bytes dentro del payload.
+	
+- **La longitud y el tipo** del dato (si es un entero, una cadena, etc.).
+
+> **Recursos útiles (Ejemplos en C):**
+> 
+> - [Retrieving Event Data Using MOF]([https://learn.microsoft.com/en-us/windows/win32/etw/retrieving-event-data-using-tdh](https://learn.microsoft.com/en-us/windows/win32/etw/retrieving-event-data-using-mof))
+> - [Using TdhFormatProperty to consume event data](https://learn.microsoft.com/en-us/windows/win32/etw/using-tdhformatproperty-to-consume-event-data)
+> - [Using TdhGetProperty to consume event data](https://learn.microsoft.com/en-us/windows/win32/etw/using-tdhgetproperty-to-consume-event-data)
+>
+
+Con esta información, nuestra aplicación ya puede realizar un simple `memcpy` o un cast de punteros para extraer el valor real y empezar a aplicar la lógica de detección.
+
+
+> **El problema de la portabilidad (.ETL vs .EVTX)**
+> 
+> Utilizar el modo **"Logfile"** al configurar nuestra sesión con `OpenTrace` genera archivos `.etl` nativos. Estos archivos son extremadamente eficientes porque **no contienen información de decodificado**, solo los datos binarios puros. Esto implica que si intentas abrir un `.etl` en un ordenador que no tiene el driver o proveedor específico registrado (es decir, que no tiene la clave en _HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Publishers_), no podrás interpretar el contenido de los eventos.
+> 
+> Para solucionar esto, el Visor de Eventos utiliza el formato **.evtx**. Al exportar un log a este formato (mediante la API [`EvtExportLog`](https://learn.microsoft.com/en-us/windows/win32/api/winevt/nf-winevt-evtexportlog)), el sistema busca los recursos del manifiesto y los adjunta al archivo. Por eso, un archivo `.evtx` es mucho más pesado que un `.etl`, pero garantiza que pueda ser analizado en cualquier máquina sin depender de que el proveedor original esté instalado.
+
+## System Loggers
+
+A diferencia de las sesiones de ETW convencionales que dependen de proveedores registrados, los **System Loggers** permiten al kernel de Windows emitir eventos globales de forma nativa. Estos no están vinculados a un GUID de proveedor específico, sino que están integrados en el propio corazón del sistema operativo para medir el rendimiento y el comportamiento del kernel.
+
+A nivel de arquitectura, existen tres loggers principales que debes conocer:
+
+| **Índice** | **Nombre**                         | **GUID de sesión**                       | **Símbolo**              |
+| ---------- | ---------------------------------- | ---------------------------------------- | ------------------------ |
+| **0**      | **NT Kernel Logger**               | `{9e814aad-3204-11d2-9a82-006008a86939}` | `SystemTraceControlGuid` |
+| **1**      | **Global Logger**                  | `{e8908abc-aa84-11d2-9a93-00805f85d7c6}` | `GlobalLoggerGuid`       |
+| **2**      | **Circular Kernel Context Logger** | `{54dea73a-ed1f-42a4-af71-3e63d056f174}` | `CKCLGuid`               |
+> **Nota sobre el límite de sesiones** 
+> 
+> El kernel de Windows solo soporta un máximo de **ocho sesiones de system logger** simultáneas. Si se intnta levantar una novena sesión de este tipo, el sistema rechazará la petición, independientemente de los recursos disponibles.
+
+### Funcionamiento y Activación
+
+Para iniciar una sesión de este tipo, se utiliza la API [`StartTrace`](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-starttracew), pero con una diferencia clave: se debe especificar el flag `EVENT_TRACE_SYSTEM_LOGGER_MODE` o el GUID específico del logger.
+
+El kernel valida que el proceso tenga derechos de acceso `TRACELOG_GUID_ENABLE`. Si se concede, el sistema actualiza una **máscara de grupo de rendimiento global**. Esta máscara es la que consultan funciones críticas del kernel (como el _Context Swapper_) para decidir, incluso a niveles de interrupción muy altos (High IRQL), si deben escribir un evento de rendimiento.
+
+### Filtrado por EnableFlags
+
+En lugar de usar las _Keywords_ que vimos en los proveedores comunes, aquí el control se realiza mediante la máscara de bits **EnableFlags** de [`EVENT_TRACE_PROPERTIES`](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-enabletraceproperties). Al modificar esta máscara a través de [`ControlTrace`](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-controltrace), podemos activar o desactivar grupos enteros de eventos del kernel. 
+
+### Decodificando System Loggers: El modelo MOF
+
+A diferencia de los proveedores modernos, el **NT Kernel Logger** no utiliza manifiestos XML. En su lugar, utiliza el formato **MOF (Managed Object Format)**. Las definiciones de estos eventos (sus estructuras y tipos de datos) residen en el repositorio de WMI del sistema operativo.
+
+Aunque no tengan un manifiesto XML, **sí podemos utilizar la librería TDH (tdh.dll)** para parsearlos. TDH es capaz de consultar el repositorio WMI para obtener la información de decodificado necesaria, siempre que el consumidor sepa que está tratando con un evento de sistema.
+
+> **Información de los eventos MOF**
+>
+> Si quieres programar tu propio parser sin depender totalmente de TDH, las estructuras binarias que viajan en el payload están documentadas en el SDK de Windows:
+> 
+> - [MSDN: NT Kernel Logger Constants](https://learn.microsoft.com/en-us/windows/win32/etw/nt-kernel-logger-constants): Lista de flags y tipos de eventos.
+>    
+> - [MSDN: Event Tracing MOF Classes](https://learn.microsoft.com/en-us/windows/win32/etw/event-tracing-mof-classes): Definiciones de las clases de datos del kernel. 
+> 
+> Evidentemente, aunque se puede hacer de forma manual mediante casts de estructuras del SDK, es mucho más robusto usar [`TdhGetEventInformation`](https://learn.microsoft.com/en-us/windows/win32/api/tdh/nf-tdh-tdhgeteventinformation). Esta función detecta automáticamente que el evento proviene del kernel y busca la clase MOF correspondiente en el sistema para devolverte la estructura [`TRACE_EVENT_INFO`](https://learn.microsoft.com/en-us/windows/win32/api/tdh/ns-tdh-trace_event_info) con los nombres de los campos (como "ImageFileName" o "CommandLine").
