@@ -10,7 +10,7 @@ const defaultLocale = 'es';
  */
 export function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
-    
+
     // Skip if pathname already includes locale
     const pathnameHasLocale = locales.some(
         (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
