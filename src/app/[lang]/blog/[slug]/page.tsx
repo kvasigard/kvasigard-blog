@@ -168,9 +168,23 @@ function extractHeadings(content: string) {
             const match = line.match(/^(#{2,6})\s+(.+)$/);
             if (match) {
                 const level = match[1].length;
-                const text = match[2].trim();
-                const id = slugger.slug(text);
-                headings.push({ level, text, id });
+                const rawText = match[2].trim();
+
+                // Limpiamos la sintaxis Markdown para el texto visible y para el ID
+                const cleanText = rawText
+                    // Extrae solo el texto de los enlaces: [Texto](url) -> Texto
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                    // Elimina asteriscos, guiones bajos, tildes y backticks
+                    .replace(/[*_~`]/g, '')
+                    // Elimina etiquetas HTML si las hay
+                    .replace(/<\/?[^>]+(>|$)/g, "")
+                    .trim();
+
+                // Generamos el ID basándonos en el texto ya limpio (igual que hace rehype-slug)
+                const id = slugger.slug(cleanText);
+
+                // Guardamos cleanText en lugar de rawText
+                headings.push({ level, text: cleanText, id });
             }
         }
     }

@@ -1,0 +1,10 @@
+---
+title: Creando el sensor ETW
+date: 2026-04-01
+tags:
+  - Programming
+  - Syscalls
+series: Black Hole EDR
+---
+En este blog vamos a ver cómo podemos conseguir los *call stacks* de los programas para, en un futuro, poder analizarlos y determinar si ese programa puede estar utilizando técnicas de evasión como _Direct Syscalls_ o _Indirect Syscalls_. Para conseguir esto, crearemos un sensor que recoge esa telemetría utilizando ETW.
+

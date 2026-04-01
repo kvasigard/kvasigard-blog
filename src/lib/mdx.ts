@@ -23,20 +23,28 @@ function calculateReadTime(text: string): number {
     return Math.ceil(words / wordsPerMinute);
 }
 
+// NUEVA FUNCIÓN: Asegura que la fecha siempre sea un string en formato YYYY-MM-DD
+function formatDate(date: any): string {
+    if (date instanceof Date) {
+        return date.toISOString().split('T')[0];
+    }
+    return String(date || '');
+}
+
 export async function getPostBySlug(lang: string, slug: string): Promise<Post | null> {
     const fullPath = path.join(contentDir, lang, `${slug}.mdx`);
-    
+
     if (!fs.existsSync(fullPath)) {
         return null;
     }
-    
+
     const fileContents = fs.readFileSync(fullPath, 'utf8');
     const { data, content } = matter(fileContents);
-    
+
     return {
         slug,
         title: data.title,
-        date: data.date,
+        date: formatDate(data.date), // APLICADO AQUÍ
         tags: data.tags || [],
         series: data.series || undefined,
         readTime: calculateReadTime(content),
@@ -49,7 +57,7 @@ export async function getAllPosts(lang: string): Promise<PostMetadata[]> {
     if (!fs.existsSync(langDir)) {
         return [];
     }
-    
+
     const fileNames = fs.readdirSync(langDir);
     const posts = fileNames
         .filter(file => file.endsWith('.mdx'))
@@ -57,17 +65,17 @@ export async function getAllPosts(lang: string): Promise<PostMetadata[]> {
             const fullPath = path.join(langDir, fileName);
             const fileContents = fs.readFileSync(fullPath, 'utf8');
             const { data, content } = matter(fileContents);
-            
+
             return {
                 slug: fileName.replace(/\.mdx$/, ''),
                 title: data.title,
-                date: data.date,
+                date: formatDate(data.date), // APLICADO AQUÍ
                 tags: data.tags || [],
                 series: data.series || undefined,
                 readTime: calculateReadTime(content),
             };
         })
         .sort((a, b) => (new Date(b.date).getTime() - new Date(a.date).getTime()));
-        
+
     return posts;
 }

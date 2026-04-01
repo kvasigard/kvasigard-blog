@@ -67,7 +67,7 @@ export default async function SagasPage({ params }: { params: Promise<{ lang: st
                                             {post.title}
                                         </div>
                                         <div className="text-[10px] text-zinc-500 mt-2 font-mono flex gap-3 uppercase tracking-widest">
-                                            <span>{post.date}</span>
+                                            <span>{new Date(post.date).toLocaleDateString(resolvedParams.lang)}</span>
                                             <span className="opacity-30">|</span>
                                             <span>{post.readTime}m</span>
                                         </div>
