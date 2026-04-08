@@ -6,5 +6,202 @@ tags:
   - Syscalls
 series: Black Hole EDR
 ---
-En este blog vamos a ver cómo podemos conseguir los *call stacks* de los programas para, en un futuro, poder analizarlos y determinar si ese programa puede estar utilizando técnicas de evasión como _Direct Syscalls_ o _Indirect Syscalls_. Para conseguir esto, crearemos un sensor que recoge esa telemetría utilizando ETW.
+En esta entrada vamos a explorar cómo obtener los _call stacks_ de los procesos para, más adelante, analizar si están empleando técnicas de evasión como _Direct_ o _Indirect Syscalls_. Para lograrlo, construiremos un sensor que recoja esta telemetría mediante ETW. Si no estás familiarizado con cómo funciona ETW, te recomiendo echarle un vistazo a [mi post anterior](https://kvasigard.com/es/blog/Introduccion-a-ETW) donde explico las bases.
+## ¿Que proveedor he utilizado?
 
+En el ecosistema de Windows coexisten cientos de proveedores de ETW y cada uno reporta una multitud de eventos, lo que puede resultar abrumador al intentar localizar un comportamiento específico.
+
+Para detectar y analizar llamadas directas e indirectas al sistema (_syscalls_), he seleccionado tres opciones fundamentales que presentan distintos enfoques y capacidades:
+
+- **Microsoft-Windows-Threat-Intelligence:** Este proveedor se ha consolidado como el estándar en los EDR modernos. Su diseño permite recolectar telemetría sobre comportamientos maliciosos conocidos, como la manipulación de memoria remota o el uso de _apc_queuing_. Su limitación principal es que su acceso está restringido. Requiere que el proceso consumidor posea privilegios de nivel **PPL (Protected Process Light)** y un certificado de **Antimalware**, lo que complica su uso. 
+    
+- **Microsoft-Windows-Kernel-Audit-API-Calls:** Es una opción especializada que pone el foco en el monitoreo algunas de las llamadas a la API del kernel. Es muy útil para auditar el flujo de ejecución de ciertas funciones pero ofrece una menor visibilidad de los eventos del sistema. Su alcance es más granular y específico que el de otros proveedores.
+    
+- **NT Kernel Logger:** A diferencia de los anteriores, el NT Kernel Logger no es un proveedor común, sino que se categoriza como un **System Logger**. Es la herramienta de instrumentación por excelencia para obtener una visión global del sistema (procesos, hilos, I/O de disco y red). No obstante, su configuración es distinta y presenta una mayor complejidad.
+    
+
+Aunque los tres permiten capturar el _call stack_, he decidido utilizar el **NT Kernel Logger**.
+
+Soy consciente de que no es la opción ideal para un entorno de producción debido a la ingente cantidad de eventos que genera y su impacto en la CPU. Sin embargo, dado que este es un proyecto de investigación y un laboratorio personal, me ofrece una visibilidad total del sistema. Además, uno de mis objetivos es aprender a optimizar código y gestionar grandes volúmenes de datos, por lo que enfrentarme a este reto me parece la oportunidad perfecta.
+
+Mas adelante pretendo integrar también Microsoft-Windows-Threat-Intelligence y hare otra entrada cuando eso suceda. 
+
+## Activar NT Kernel Logger
+
+Configurar el **NT Kernel Logger** no es tan directo como suscribirse a un proveedor normal. Al ser una sesión especial (_System Trace Session_), tuve que pelearme con varios parámetros de configuración de las APIs de Windows hasta conseguir lo que buscaba.
+
+### Escogiendo los eventos
+
+Lo primero fue definir qué eventos quería monitorizar. Para un _system logger_, los eventos disponibles vienen definidos dentro de la estructura `EVENT_TRACE_PROPERTIES`, específicamente en el campo `EnableFlags`. También se pueden consultar en la documentación de Windows bajo la clase `MSNT_SystemTrace`.
+
+Tras revisar las opciones, identifiqué que para mi caso de uso lo mínimo indispensable era utilizar `EVENT_TRACE_FLAG_SYSTEMCALL`. Este grupo de eventos lo genera la clase `PerfInfo` y engloba dos tipos:
+
+- **SysCallEnter:** Se dispara justo cuando un hilo invoca una función del kernel. Nos da la dirección de la instrucción `syscall` que se ha ejecutado.
+    
+- **SysCallExit:** Se genera cuando la operación termina en el kernel y vuelve al modo usuario. Sirve mayoritariamente para medir tiempos de ejecución.
+    
+
+Desde nuestra perspectiva, la más interesante es la primera: **SysCallEnter**. 
+
+Otros eventos que nos pueden resultar útiles a parte de `EVENT_TRACE_FLAG_SYSTEMCALL` son los de Procesos (`EVENT_TRACE_FLAG_PROCESS`), hilos (`EVENT_TRACE_FLAG_THREAD`) y carga de imágenes (`EVENT_TRACE_FLAG_IMAGE_LOAD`).
+
+### Activación y gestión de buffers
+
+Una vez identificados los eventos, lo siguiente es activar el proveedor. Para ello utilizamos la función `StartTraceW`, rellenando la estructura `EVENT_TRACE_PROPERTIES`. Por norma general, los parámetros son los estándar para cualquier proveedor ETW, con estas excepciones:
+
+1. El campo `Wnode.Guid` debe contener el valor `SystemTraceControlGuid`.
+    
+2. Dado el gran volumen de datos, los _buffers_ deben tener valores adecuados para evitar la pérdida de eventos (_events lost_). Mis recomendaciones tras varias pruebas son:
+    
+    - **BufferSize:** Controla el tamaño de cada buffer en KB. Un valor de **64 KB** es el punto óptimo entre granularidad y rendimiento.
+        
+    - **MinimumBuffers:** Número mínimo de buffers reservados al inicio. Un valor de **20** suele ser suficiente para absorber el pico inicial.
+        
+    - **MaximumBuffers:** Límite máximo de memoria. Lo he configurado a **128** para dar margen.
+        
+    - **FlushTimer:** En modo _real-time_, configurarlo a **1 segundo** asegura una telemetría fluida.
+    
+3. Tal y como hemos comentado antes, el parámetro `EnableFlags` debe contener el valor `EVENT_TRACE_FLAG_SYSTEMCALL`. 
+
+> **Alineamiento**
+> 
+> Tal y como pone en la sección _Remarks_ de la documentación oficial para `EVENT_TRACE_PROPERTIES`, la estructura `WNODE` debe estar correctamente alineada ya que los nombres de la sesión y del archivo de log deben viven en el mismo bloque de memoria que la propia estructura y son accedidos utilizando offsets.
+
+### Ejemplo de implementación
+
+Para que quede un poco mas claro como se traslada todo eso a código he creado el siguiente ejemplo:
+
+``` rust
+pub fn start_nt_kernel_logger() -> Result<CONTROLTRACE_HANDLE, u32> {
+    // Definimos el GUID reservado para el NT Kernel Logger
+    // SystemTraceControlGuid: {9e814aad-3204-11d2-9a82-006008a86939}
+    let system_trace_control_guid = GUID::from_values(
+        0x9e814aad, 0x3204, 0x11d2, [0x9a, 0x82, 0x00, 0x60, 0x08, 0xa8, 0x69, 0x39],
+    );
+
+    // Preparamos el nombre de la sesión en formato UTF-16 (requerido por las APIs terminadas en 'W')
+    // El NT Kernel Logger exige estrictamente llamarse "NT Kernel Logger"
+    let logger_name = "NT Kernel Logger";
+    let mut name_wide: Vec<u16> = OsStr::new(logger_name).encode_wide().collect();
+    name_wide.push(0); // Null-terminator
+
+    let name_len_bytes = name_wide.len() * std::mem::size_of::<u16>();
+    let struct_size = std::mem::size_of::<EVENT_TRACE_PROPERTIES>();
+    
+    // Calculamos el tamaño total del buffer contiguo:
+    // Tamaño de la estructura + Tamaño del nombre de la sesión + (Opcional) Tamaño del nombre del log
+    let total_size = struct_size + name_len_bytes;
+
+    // Reservamos memoria alineada inicializada a ceros
+    let mut buffer: Vec<u8> = vec![0; total_size];
+    
+    // Obtenemos un puntero mutable a la estructura dentro de nuestro buffer
+    let props_ptr = buffer.as_mut_ptr() as *mut EVENT_TRACE_PROPERTIES;
+
+    unsafe {
+        // --- CONFIGURACIÓN DE WNODE_HEADER ---
+        (*props_ptr).Wnode.BufferSize = total_size as u32;
+        (*props_ptr).Wnode.Flags = WNODE_FLAG_TRACED_GUID;
+        (*props_ptr).Wnode.ClientContext = 1; // 1 = QPC (Query Performance Counter)
+        (*props_ptr).Wnode.Guid = system_trace_control_guid;
+
+        // --- CONFIGURACIÓN DE LA SESIÓN ETW ---
+        (*props_ptr).LogFileMode = EVENT_TRACE_REAL_TIME_MODE;
+        
+        // Ajuste de Buffers 
+        (*props_ptr).BufferSize = 64;           // 64 KB por buffer
+        (*props_ptr).MinimumBuffers = 20;       // Buffers mínimos pre-asignados
+        (*props_ptr).MaximumBuffers = 128;      // Límite máximo de buffers
+        (*props_ptr).FlushTimer = 1;            // Forzar el volcado cada 1 segundo
+        
+        // Aquí indicamos qué eventos queremos
+        (*props_ptr).EnableFlags = EVENT_TRACE_FLAG_SYSTEMCALL;
+        
+        // Le decimos a Windows dónde empieza el string con el nombre de la sesión
+        (*props_ptr).LoggerNameOffset = struct_size as u32;
+        
+        // Copiamos los bytes del string UTF-16 justo al final de la estructura
+        ptr::copy_nonoverlapping(
+            name_wide.as_ptr(),
+            buffer.as_mut_ptr().add(struct_size) as *mut u16,
+            name_wide.len(),
+        );
+
+        // --- INICIO DE LA SESIÓN ---
+        let mut handle = CONTROLTRACE_HANDLE { Value: 0 };
+        
+        // Llamamos a la API de Windows. 
+        // Le pasamos el handle que nos debe devolver, el nombre y nuestro buffer preparado.
+        let status = StartTraceW(&mut handle, name_wide.as_ptr(), props_ptr);
+        ...
+    }
+}
+```
+
+
+## Activar el "Stack Walking"
+
+Una vez ya tenemos el proveedor activo, el siguiente paso es pedirle que nos envie las pila de llamadas (o _Call Stack_) asociadas a los eventos que le hemos pedido. 
+Para realizar tal cosa debemos llamar a la función `TraceSetInformation` justo despues de haber llamado a StartTraceW, tal y como indica [la documentacion](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-tracesetinformation). 
+
+La funcion `TraceSetInformation` nos pide varios parametros, entre ellos:
+- `TraceId`: Handle devuelto como primer parametro a StartTraceW.
+- `InformationClass`: El identificador de lo que queremos activar o consultar. Para nuestro caso de uso es `TraceStackTracingInfo` o el valor 3.
+- `TraceInformation`: El identificador del evento para el que queremos que nos envíe la pila de llamadas. 
+
+Para el ultimo parámetro `TraceInformation` hay que rellenar la estructura `CLASSIC_EVENT_ID`, que tiene esta pinta: 
+```C++
+typedef struct _CLASSIC_EVENT_ID {
+  GUID  EventGuid;
+  UCHAR Type;
+  UCHAR Reserved[7];
+} CLASSIC_EVENT_ID, *PCLASSIC_EVENT_ID;
+```
+
+Por lo que dice la documentación debes ir [NT Kernel Logger constants](https://learn.microsoft.com/en-us/windows/win32/etw/nt-kernel-logger-constants), buscar la clase y buscar el evento. En nuestro caso es el mismo evento `SysCallEnter` de `PerfInfo`, tal y como hemos identificado al principio del blog. 
+
+Con todo esto ya en mente, el código para esta parte nos quedaría algo así:
+
+``` rust
+// Definimos las constantes necesarias para SysCallEnter \
+// PerfInfo GUID: {ce1dbfb4-137e-4530-91bb-3d304035e14e} 
+const PERF_INFO_GUID: GUID = GUID::from_values( 0xce1dbfb4, 0x137e, 0x4530, [0x91, 0xbb, 0x3d, 0x30, 0x40, 0x35, 0xe1, 0x4e] ); 
+const EVENT_TYPE_SYSCALL_ENTER: u8 = 0x51;
+
+pub fn start_nt_kernel_logger() -> Result<CONTROLTRACE_HANDLE, u32> {
+	...
+	
+	// --- INICIO DE LA SESIÓN ---
+	let mut handle = CONTROLTRACE_HANDLE { Value: 0 };
+	
+	// Llamamos a la API de Windows. 
+	// Le pasamos el handle que nos debe devolver, el nombre y nuestro buffer preparado.
+	let status = StartTraceW(&mut handle, name_wide.as_ptr(), props_ptr);
+	
+	if status == 0 {
+		// Si la sesión inició con éxito, configuramos el Stack Walking
+		// Queremos que cada vez que ocurra una SysCallEnter (0x33), el kernel capture el stack.
+		let mut stack_id_info = CLASSIC_EVENT_ID {
+			EventGuid: PERF_INFO_GUID,
+			Type: EVENT_TYPE_SYSCALL_ENTER,
+			Reserved: [0; 7],
+		};
+	
+		unsafe {
+			let set_info_status = TraceSetInformation(
+				handle,
+				TraceStackTracingInfo, // Valor 3
+				&stack_id_info as *const _ as *const c_void,
+				std::mem::size_of::<CLASSIC_EVENT_ID>() as u32,
+			);
+			...
+		}
+	}
+}
+```
+
+## Consumir eventos de NT Kernel Logger
+
+Una vez ya tenemos nuestro proveedor activado y configurado es momento de empezar a consumir los eventos. Pa
+
+Aquí los proveedores _System Logger_ como NT Kernel Logger también funcionan un poco distinto al resto. En un proveedor convencional (entiéndese por "convencional" aquellos que utilizan manifiesto XML), la pila de llamadas se incluye en el mismo evento que le llega al consumidor, mientras que en un _System Logger_ se genera un evento adicional que posteriormente tendremos que correlacionar con el evento anterior. 
