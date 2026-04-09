@@ -1,9 +1,9 @@
 ---
-title: Creando el sensor ETW
-date: 2026-04-01
+title: "ETW: NT Kernel Logger y Call Stacks"
+date: 2026-04-09
 tags:
   - Programming
-  - Syscalls
+  - ETW
 series: Black Hole EDR
 ---
 En esta entrada vamos a explorar cómo obtener los _call stacks_ de los procesos para, más adelante, analizar si están empleando técnicas de evasión como _Direct_ o _Indirect Syscalls_. Para lograrlo, construiremos un sensor que recoja esta telemetría mediante ETW. Si no estás familiarizado con cómo funciona ETW, te recomiendo echarle un vistazo a [mi post anterior](https://kvasigard.com/es/blog/Introduccion-a-ETW) donde explico las bases.
@@ -26,6 +26,7 @@ Soy consciente de que no es la opción ideal para un entorno de producción debi
 
 Mas adelante pretendo integrar también Microsoft-Windows-Threat-Intelligence y hare otra entrada cuando eso suceda. 
 
+---
 ## Activar NT Kernel Logger
 
 Configurar el **NT Kernel Logger** no es tan directo como suscribirse a un proveedor normal. Al ser una sesión especial (_System Trace Session_), tuve que pelearme con varios parámetros de configuración de las APIs de Windows hasta conseguir lo que buscaba.
@@ -65,7 +66,7 @@ Una vez identificados los eventos, lo siguiente es activar el proveedor. Para el
 
 > **Alineamiento**
 > 
-> Tal y como pone en la sección _Remarks_ de la documentación oficial para `EVENT_TRACE_PROPERTIES`, la estructura `WNODE` debe estar correctamente alineada ya que los nombres de la sesión y del archivo de log deben viven en el mismo bloque de memoria que la propia estructura y son accedidos utilizando offsets.
+> Tal y como pone en la sección _Remarks_ de la documentación oficial para `EVENT_TRACE_PROPERTIES`, la estructura `WNODE` debe estar correctamente alineada ya que los nombres de la sesión y del archivo de log deben vivir en el mismo bloque de memoria que la propia estructura, y windows accede a estos utilizando offsets.
 
 ### Ejemplo de implementación
 
@@ -138,19 +139,19 @@ pub fn start_nt_kernel_logger() -> Result<CONTROLTRACE_HANDLE, u32> {
 }
 ```
 
-
+---
 ## Activar el "Stack Walking"
 
 Una vez ya tenemos el proveedor activo, el siguiente paso es pedirle que nos envie las pila de llamadas (o _Call Stack_) asociadas a los eventos que le hemos pedido. 
-Para realizar tal cosa debemos llamar a la función `TraceSetInformation` justo despues de haber llamado a StartTraceW, tal y como indica [la documentacion](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-tracesetinformation). 
+Para realizar tal cosa debemos llamar a la función `TraceSetInformation` justo despues de haber llamado a `StartTraceW`, tal y como indica [la documentacion](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/nf-evntrace-tracesetinformation). 
 
-La funcion `TraceSetInformation` nos pide varios parametros, entre ellos:
-- `TraceId`: Handle devuelto como primer parametro a StartTraceW.
+La función `TraceSetInformation` nos pide varios parámetros, entre ellos:
+- `TraceId`: Handle devuelto como primer parámetro a `StartTraceW`.
 - `InformationClass`: El identificador de lo que queremos activar o consultar. Para nuestro caso de uso es `TraceStackTracingInfo` o el valor 3.
 - `TraceInformation`: El identificador del evento para el que queremos que nos envíe la pila de llamadas. 
 
 Para el ultimo parámetro `TraceInformation` hay que rellenar la estructura `CLASSIC_EVENT_ID`, que tiene esta pinta: 
-```C++
+``` cpp
 typedef struct _CLASSIC_EVENT_ID {
   GUID  EventGuid;
   UCHAR Type;
@@ -165,8 +166,13 @@ Con todo esto ya en mente, el código para esta parte nos quedaría algo así:
 ``` rust
 // Definimos las constantes necesarias para SysCallEnter \
 // PerfInfo GUID: {ce1dbfb4-137e-4530-91bb-3d304035e14e} 
-const PERF_INFO_GUID: GUID = GUID::from_values( 0xce1dbfb4, 0x137e, 0x4530, [0x91, 0xbb, 0x3d, 0x30, 0x40, 0x35, 0xe1, 0x4e] ); 
-const EVENT_TYPE_SYSCALL_ENTER: u8 = 0x51;
+const PERF_INFO_GUID: GUID = GUID::from_values( 
+	0xce1dbfb4, 
+	0x137e, 
+	0x4530, 
+	[0x91, 0xbb, 0x3d, 0x30, 0x40, 0x35, 0xe1, 0x4e] 
+); 
+const EVENT_TYPE_SYSCALL_ENTER: u8 = 0x33;
 
 pub fn start_nt_kernel_logger() -> Result<CONTROLTRACE_HANDLE, u32> {
 	...
@@ -200,8 +206,166 @@ pub fn start_nt_kernel_logger() -> Result<CONTROLTRACE_HANDLE, u32> {
 }
 ```
 
+---
 ## Consumir eventos de NT Kernel Logger
 
-Una vez ya tenemos nuestro proveedor activado y configurado es momento de empezar a consumir los eventos. Pa
+Una vez ya tenemos nuestro proveedor activado y configurado, es momento de empezar a consumir eventos. Para ello, primero debemos abrir la sesión ETW que acabamos de configurar, lo cual conseguimos con la función `OpenTraceW`.
 
-Aquí los proveedores _System Logger_ como NT Kernel Logger también funcionan un poco distinto al resto. En un proveedor convencional (entiéndese por "convencional" aquellos que utilizan manifiesto XML), la pila de llamadas se incluye en el mismo evento que le llega al consumidor, mientras que en un _System Logger_ se genera un evento adicional que posteriormente tendremos que correlacionar con el evento anterior. 
+Esta función recibe como parámetro una estructura de tipo [`EVENT_TRACE_LOGFILEW`](https://learn.microsoft.com/en-us/windows/win32/api/evntrace/ns-evntrace-event_trace_logfilew). Los campos más relevantes de esta estructura que debemos configurar son los siguientes:
+
+- **LoggerName**: El nombre de la sesión a la que queremos conectarnos. En nuestro caso, debe ser _exactamente_ `"NT Kernel Logger"`.
+    
+- **ProcessTraceMode**: Define cómo queremos recibir los datos. Para nuestro análisis en tiempo real, utilizaremos el flag `PROCESS_TRACE_MODE_REAL_TIME`. También es recomendable añadir `PROCESS_TRACE_MODE_EVENT_RECORD` para trabajar con el formato de evento moderno. Adicionalmente para este caso de uso en concreto es recomendable utilizar también `PROCESS_TRACE_MODE_RAW_TIMESTAMP`; mas adelante veremos por qué. 
+    
+- **EventRecordCallback**: Es el puntero a nuestra función de _"callback"_. Cada vez que el kernel genere un evento (una _syscall_, un nuevo proceso, etc.), Windows llamará a esta función pasándole un puntero a `EVENT_RECORD`.
+    
+- **Context**: Un puntero opcional a cualquier estructura de datos propia que queramos recuperar dentro del callback. Es extremadamente útil para pasar datos o estados internos de nuestra aplicación sin usar variables globales.
+
+Una vez hemos abierto la sesión con `OpenTraceW`, este nos devuelve un _handle_ que deberemos pasar a la siguiente función: `ProcessTrace`. `ProcessTrace` es una función **bloqueante**. Se quedará "secuestrando" el hilo actual mientras la sesión esté activa y por ello lo habitual es lanzarla en un hilo separado. Mientras el hilo este secuestrado seguirán llegando eventos a nuestro _callback_. 
+
+La implementación en Rust de esta parte quedaría de la siguiente manera:
+
+``` rust
+// Definimos el Callback que procesará cada evento
+unsafe extern "system" fn record_callback(record: *mut EVENT_RECORD) {
+    let event_guid = (*record).EventHeader.ProviderId;
+    let event_type = (*record).EventHeader.EventDescriptor.Opcode;
+
+    // Aquí filtraríamos por PERF_INFO_GUID y el tipo 0x51 (SysCallEnter)
+    if event_guid == PERF_INFO_GUID && event_type == 0x51 {
+        // Lógica de análisis de la syscall
+        ...
+    }
+}
+
+pub fn consume_trace(handle: CONTROLTRACE_HANDLE) {
+    let mut log_file: EVENT_TRACE_LOGFILEW = unsafe { std::mem::zeroed() };
+    
+    let mut session_name: Vec<u16> = OsStr::new("NT Kernel Logger")
+        .encode_wide()
+        .collect();
+    session_name.push(0);
+
+    log_file.LoggerName = PWSTR(session_name.as_mut_ptr());
+    log_file.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME 
+		| PROCESS_TRACE_MODE_EVENT_RECORD 
+		| PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+    log_file.Anonymous1.EventRecordCallback = Some(record_callback);
+
+    unsafe {
+        // Abrimos la sesion
+        let trace_handle = OpenTraceW(&mut log_file);
+        // Creamos un nuevo thread
+        let handle = std::thread::spawn(move || {
+	        if trace_handle.Value != !0 {
+	            // Iniciamos el procesamiento 
+	            let _ = ProcessTrace(&[trace_handle], None, None);
+	        }
+	    });
+	    ...
+    }
+}
+```
+
+### Los eventos del call stack
+
+Antes he comentado que debemos añadir el flag `PROCESS_TRACE_MODE_RAW_TIMESTAMP` por conveniencia para el futuro, y el caso es que los proveedores _System Logger_ como NT Kernel Logger funcionan un poco distinto al resto. En un proveedor convencional (entiéndase por "convencional" aquellos proveedores modernos que utilizan un manifiesto XML), la pila de llamadas se incluye en el mismo evento que le llega al consumidor. Sin embargo, en un _System Logger_, el kernel genera un evento adicional independiente que posteriormente tendremos que correlacionar con el evento original.
+
+El problema está en esa correlación, ya que los eventos de _call stack_ vienen por defecto con el _timestamp_ en crudo (ciclos de CPU), mientras que los eventos normales suelen venir formateados en tiempo del sistema. Esto provoca que no podamos comparar el tiempo exacto en que ambos eventos fueron generados y, por lo tanto, la correlación sea imposible. Al usar `PROCESS_TRACE_MODE_RAW_TIMESTAMP`, obligamos a que todos los eventos utilicen el mismo reloj base (QPC - _Query Performance Counter_).
+
+Con el mismo formato en ambos eventos (el de `SysCallEnter` y el del _call stack_), ya los podemos enlazar utilizando el **PID**, el **TID** y el **timestamp** exacto del evento.
+
+Como bien manda la buena práctica, esto es aconsejable hacerlo **fuera de la función `record_callback`**. Si nos ponemos a parsear pilas de llamadas y a buscar en diccionarios de correlación dentro del propio _callback_, bloquearemos el consumo de nuevos eventos. Si el sistema está bajo mucha carga, llenaremos los buffers de ETW y Windows empezará a descartar eventos (_dropped events_). Lo ideal es extraer rápido los datos, copiarlos a una estructura propia y enviarlos a otro hilo para que haga el trabajo pesado.
+
+El código en Rust para esta parte (haciendo uso de un canal `mpsc` y el campo `Context`) quedaría de la siguiente forma:
+
+**Nueva función consume_trace()**
+``` rust
+pub fn consume_trace(handle: CONTROLTRACE_HANDLE) {
+    // Creamos el canal de comunicación entre el hilo de ETW y nuestro procesador
+    let (tx, rx) = mpsc::channel::<ParsedEvent>();
+    let mut log_file: EVENT_TRACE_LOGFILEW = unsafe { std::mem::zeroed() };
+    let mut session_name: Vec<u16> = OsStr::new("NT Kernel Logger")
+        .encode_wide()
+        .collect();
+    session_name.push(0);
+    
+    log_file.LoggerName = PWSTR(session_name.as_mut_ptr());
+    log_file.ProcessTraceMode = PROCESS_TRACE_MODE_REAL_TIME 
+        | PROCESS_TRACE_MODE_EVENT_RECORD 
+        | PROCESS_TRACE_MODE_RAW_TIMESTAMP;
+    log_file.Anonymous1.EventRecordCallback = Some(record_callback);
+    
+    // Pasamos el puntero del Sender al Context para poder usarlo en el callback
+    log_file.Context = &tx as *const _ as *mut std::ffi::c_void;
+
+    unsafe {
+        let trace_handle = OpenTraceW(&mut log_file);
+        
+        // Hilo 1: Secuestrado por ProcessTrace empujando eventos al canal
+        let _etw_thread = thread::spawn(move || {
+            if trace_handle.Value != !0 {
+                let _ = ProcessTrace(&[trace_handle], None, None);
+            }
+        });
+
+        // Hilo 2: El hilo actual (o uno nuevo) actuando de Correlacionador
+        let mut pending_syscalls: HashMap<(u32, i64), ParsedEvent> = HashMap::new();
+
+        // Consumimos los eventos 
+        for event in rx {
+            if event.provider_id == PERF_INFO_GUID {
+                // Guardamos la syscall esperando su stack
+                pending_syscalls.insert((event.tid, event.timestamp), event);
+            } else if event.provider_id == STACK_WALK_GUID {
+                // Buscamos si tenemos una syscall previa con el mismo TID y Timestamp
+                if let Some(syscall) = pending_syscalls.remove(&(event.tid, event.timestamp)) {
+                    // Si lo encontramos procesaríamos las direcciones de memoria de la pila
+                    ...
+                }
+            }
+        }
+    }
+}
+```
+
+**Nueva función record_callback()**
+``` rust
+// Definimos una estructura segura para mover entre hilos.
+#[derive(Debug)]
+pub struct ParsedEvent {
+    pub provider_id: GUID,
+    pub opcode: u8,
+    pub pid: u32,
+    pub tid: u32,
+    pub timestamp: i64, // Timestamp en crudo
+    ...
+}
+
+unsafe extern "system" fn record_callback(record: *mut EVENT_RECORD) {
+    let header = &(*record).EventHeader;
+    let event_guid = header.ProviderId;
+    let event_type = header.EventDescriptor.Opcode;
+    
+    // Extraemos el Sender del canal que pasamos a través del campo Context de EVENT_TRACE_LOGFILEW
+    let sender_ptr = (*record).UserContext as *mut Sender<ParsedEvent>;
+    if sender_ptr.is_null() { return; }
+    let sender = &*sender_ptr;
+
+    // PerfInfo (Syscalls) o StackWalkGuid (Call Stacks)
+    // 51 en decimal es 0x33 en Hex (SysCallEnter)
+    if (event_guid == PERF_INFO_GUID && event_type == 0x33) || event_guid == STACK_WALK_GUID {
+        
+        let parsed = ParsedEvent {
+            provider_id: event_guid,
+            opcode: event_type,
+            pid: header.ProcessId,
+            tid: header.ThreadId,
+            timestamp: header.TimeStamp.QuadPart,
+        };
+
+        // Enviamos el evento al hilo procesador de forma asíncrona. 
+        let _ = sender.send(parsed);
+    }
+}
+```
