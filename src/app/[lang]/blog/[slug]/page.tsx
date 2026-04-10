@@ -11,6 +11,7 @@ import GithubSlugger from 'github-slugger';
 import TableOfContents from '@/components/blog/TableOfContents';
 import { codeToHtml } from 'shiki';
 import { visit } from 'unist-util-visit';
+import CopyCodeListener from '@/components/blog/CopyCodeListener';
 
 
 export async function generateStaticParams() {
@@ -64,7 +65,22 @@ function rehypeShiki(dictionary: any) {
                                         properties: { className: ['flex items-center justify-between px-4 py-2 bg-zinc-200/50 dark:bg-black/20 border-b border-zinc-200 dark:border-white/10 font-mono text-[10px] uppercase tracking-widest text-zinc-500 dark:text-amber-500 transition-colors duration-300'] },
                                         children: [
                                             { type: 'element', tagName: 'span', children: [{ type: 'text', value: lang }] },
-                                            { type: 'element', tagName: 'span', children: [{ type: 'text', value: dictionary.copy }] }
+                                            { 
+                                                type: 'element', 
+                                                tagName: 'button', 
+                                                properties: { 
+                                                    className: ['copy-button flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-amber-400 transition-colors cursor-pointer'],
+                                                    'data-code': encodeURIComponent(code.trim()),
+                                                    'data-copied-label': dictionary.copied || "Copied!",
+                                                    'data-copy-label': dictionary.copy
+                                                },
+                                                children: [
+                                                    { 
+                                                        type: 'raw', 
+                                                        value: `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-copy inline-block"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg> <span class="copy-text">${dictionary.copy}</span>`
+                                                    }
+                                                ]
+                                            }
                                         ]
                                     },
                                     {
@@ -230,6 +246,7 @@ export default async function PostPage({ params }: { params: Promise<{ lang: str
                     prose-strong:text-indigo-600 dark:prose-strong:text-amber-500"
                     dangerouslySetInnerHTML={{ __html: htmlContent }}
                 />
+                <CopyCodeListener />
             </article>
 
             {headings.length > 0 && (
